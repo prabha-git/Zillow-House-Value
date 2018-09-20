@@ -16,6 +16,7 @@ Loading library
 
 ```{r message=FALSE, warning=FALSE}
 library(tidyverse)
+library(corrplot)
 ```
 
 Listing all the input files
@@ -130,6 +131,116 @@ Summary of train data
 ```{r}
 summary(merged_train)
 ```
+# Correcting the datatypes
+zip code is a factor variable , convert as factors
+```{r}
+merged_train$regionidzip=as.factor(merged_train$regionidzip)
+```
+
+fips ia another factor variable
+```{r}
+merged_train$fips=as.factor(merged_train$fips)
+```
+
+Airconditioning  ia another factor variable
+```{r}
+merged_train$airconditioningtypeid=as.factor(merged_train$airconditioningtypeid)
+```
+
+Architecture  ia another factor variable
+```{r}
+merged_train$architecturalstyletypeid=as.factor(merged_train$architecturalstyletypeid)
+```
+
+decktypeid - It has only one value - Hence converting Y & N variable and convert as factor varaiable
+
+```{r}
+table(merged_train$decktypeid,exclude = NULL)
+
+merged_train=merged_train %>% replace_na(list(decktypeid='N')) %>% mutate(decktypeid=as.factor(recode(decktypeid,'66'='Y')))
+```
+
+Has hot tub or spa , convert to binary numeric value
+```{r}
+merged_train=merged_train %>% replace_na(list(hashottuborspa='N')) %>% mutate(hashottuborspa=as.integer(recode(hashottuborspa,'true'=1,'N'=0)))
+```
+
+Heating system type,convert to factors
+```{r}
+merged_train=merged_train %>% replace_na(list(heatingorsystemtypeid='0')) %>% mutate(heatingorsystemtypeid=as.factor(heatingorsystemtypeid))
+
+```
+
+
+Pooltypeid10 - Spa or Hot tub
+Pooltypeid2 -  Pool with Spa/Hot Tub
+Pooltypeid7 -   Pool without hot tub
+
+
+```{r}
+merged_train=merged_train %>% replace_na(list(pooltypeid10=0)) %>% mutate(pooltypeid10=as.integer(pooltypeid10))
+
+merged_train=merged_train %>% replace_na(list(pooltypeid2=0)) %>% mutate(pooltypeid2=as.integer(pooltypeid2))
+
+merged_train=merged_train %>% replace_na(list(pooltypeid7=0)) %>% mutate(pooltypeid7=as.integer(pooltypeid7))
+```
+
+propertycountylandusecode, replace it with most common value (0100) and convert into factor 
+
+```{r}
+merged_train=merged_train %>% replace_na(list(propertycountylandusecode=0100)) %>% mutate(propertycountylandusecode=as.factor(propertycountylandusecode))
+```
+
+propertylandusetypeid, replace it with most common value (261) and convert into factor 
+
+```{r}
+merged_train=merged_train %>% replace_na(list(propertylandusetypeid='261')) %>% mutate(propertylandusetypeid=as.factor(propertylandusetypeid))
+```
+
+
+Removing below variables based on my gut feeling , but eventually needs to be evaluated.
+```{r}
+merged_train=merged_train %>% select(-c(propertyzoningdesc,rawcensustractandblock))
+```
+
+
+# Finding correlation
+
+Extract only numeric features
+Find the correlation within the variables 
+Eliminate the duplicate variables by seeing high correlation between them
+```{r fig.height=12,fig.width=12}
+numeric_features=colnames(merged_train[,which(sapply(merged_train,class) %in% c("numeric","integer"))])
+#numeric_features
+
+cor_numeric_features=cor(merged_train[,numeric_features],use='pairwise.complete.obs')
+corrplot.mixed(cor_numeric_features,tl.cex = 0.8,tl.pos="lt",upper = "circle",number.cex=0.5)
+```
+From the above correlation plot ,below group of variables are highly correlated
+
+calculatedfinishedsquarefeet , finishedfloor1squarefeet , finishedsquarefeet12 , finishedsquarefeet13 , finishedsquarefeet15 , finishedsquarefeet50, finishedsquarefeet6
+
+
+Lets keep only the feature with minimun missing values. As per the below results only keep calculatedfinishedsquarefeet
+
+```{r}
+sort(colSums(is.na(merged_train[,c("calculatedfinishedsquarefeet" , "finishedfloor1squarefeet" , "finishedsquarefeet12" , "finishedsquarefeet13" , "finishedsquarefeet15" , "finishedsquarefeet50", "finishedsquarefeet6")])),decreasing = T)
+
+merged_train=merged_train %>% select(-c(finishedsquarefeet13,finishedsquarefeet6,finishedsquarefeet15,finishedfloor1squarefeet,finishedsquarefeet50,finishedsquarefeet12))
+
+
+
+```
+
+
+
+bathroomcnt is highly correlated with calculatedbathnbr,fullbathcnt and as per the below results calculatedbathnbr & fullbathcnt has more missing value, hence removing it
+
+```{r}
+sort(colSums(is.na(merged_train[,c("calculatedbathnbr","bathroomcnt","fullbathcnt")])),decreasing = T)
+merged_train=merged_train %>% select(-c(calculatedbathnbr,fullbathcnt))
+```
+
 
 # Missing data
 
