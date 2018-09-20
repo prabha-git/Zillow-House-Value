@@ -1,0 +1,141 @@
+<style>
+ol ul {
+   margin-bottom: 20px;
+}
+</style>
+`
+
+---
+title: "Zillow - House value"
+output: html_notebook
+editor_options:
+ chunk_output_type: inline
+---
+
+Loading library
+
+```{r message=FALSE, warning=FALSE}
+library(tidyverse)
+```
+
+Listing all the input files
+
+1. zillow_data_dictionary.xlsx
+   - Definition of columns in training datsets
+
+
+2. properties_2016.csv
+   - all the properties with their home features for 2016. Note: Some 2017 new properties don't have any          data yet except for their parcelid's. Those data points should be populated when properties_2017.csv is       available.
+
+
+3. properties_2017.csv
+   - all the properties with their home features for 2017 (released on 10/2/2017)
+
+
+4. train_2016_v2.csv
+   - the training set with transactions from 1/1/2016 to 12/31/2016
+
+
+5. train_2017.csv
+   - the training set with transactions from 1/1/2017 to 9/15/2017 (released on 10/2/2017)
+
+
+6. Sample_submission.csv
+   - Sample submission file
+
+```{r}
+list.files("datasets/")
+```
+
+# Loading the data
+
+```{r message=FALSE,cache=TRUE}
+properties_2016=read_csv("datasets/properties_2016.csv")
+properties_2017=read_csv("datasets/properties_2017.csv")
+
+train_2016_v2=read_csv("datasets/train_2016_v2.csv")
+
+train_2017=read_csv("datasets/train_2017.csv")
+
+sample_submission=read_csv("datasets/sample_submission.csv")
+```
+
+# Exploratory Analysis
+
+Lets see how many unique houses in the train datasets.
+
+```{r}
+unique_house_train_2016=n_distinct(train_2016_v2$parcelid)
+cat ("2016 train dataset has ",unique_house_train_2016," unique houses")
+
+unique_house_train_2017=n_distinct(train_2017$parcelid)
+cat ("2017 train dataset has ",unique_house_train_2017," unique houses")
+
+c(dim(properties_2016),dim(properties_2017))
+
+# To find if both the files has exactly same houses in them.
+c(setdiff(properties_2016$parcelid,properties_2017$parcelid),setdiff(properties_2017$parcelid,properties_2016$parcelid))
+
+dim(sample_submission)
+```
+
+
+
+
+
+Also there are 2985217 datasets in both properties_2016 & properties_2017 . And Houses in both the datasets exactly match. Also it matches the sample_submission file.
+
+
+
+
+I am interested to see how many houses were sold more than once .There were 124 out of 90150 houses that were sold more than once in 2016 (2016 training data)
+
+```{r}
+train_2016_v2 %>% group_by(parcelid) %>% summarise(freq=n()) %>% filter(freq>1) %>% arrange(desc(freq))
+
+train_2016_v2 %>% group_by(parcelid) %>% summarise(freq=n()) %>% filter(freq>1) %>% dim()
+
+train_2016_v2 %>% group_by(parcelid) %>% summarise(freq=n()) %>%  dim()
+```
+
+
+
+Likewise lets see for 2017 trainign data.
+There were 196 out of 77414 houses that were sold more than once in 2017 (2016 training data)
+
+```{r}
+train_2017 %>% group_by(parcelid) %>% summarise(freq=n()) %>% filter(freq>1) %>% arrange(desc(freq))
+
+train_2017 %>% group_by(parcelid) %>% summarise(freq=n()) %>% filter(freq>1) %>% dim()
+
+train_2017 %>% group_by(parcelid) %>% summarise(freq=n()) %>%  dim()
+
+# To find the number of houses that were sold more than once in 2016 & 2017 (as per training data)
+length(which(table(c(train_2016_v2$parcelid,train_2017$parcelid))>1))
+```
+
+Above analysis shows there were 2669 houses which were sold more than once between 2016 & 2017 (again only as in trainin data time frame)
+
+
+
+Join the train dataset with properties dataset
+```{r}
+merged_train_2016=left_join(train_2016_v2,properties_2016,by="parcelid")
+merged_train_2017=left_join(train_2017,properties_2017,by="parcelid")
+
+merged_train=rbind(merged_train_2016,merged_train_2017)
+```
+
+Summary of train data
+```{r}
+summary(merged_train)
+```
+
+# Missing data
+
+```{r}
+sort(colSums(is.na(merged_train)),decreasing = T)
+```
+
+
+
