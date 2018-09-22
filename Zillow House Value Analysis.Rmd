@@ -92,11 +92,13 @@ Also there are 2985217 datasets in both properties_2016 & properties_2017 . And 
 I am interested to see how many houses were sold more than once .There were 124 out of 90150 houses that were sold more than once in 2016 (2016 training data)
 
 ```{r}
+
 train_2016_v2 %>% group_by(parcelid) %>% summarise(freq=n()) %>% filter(freq>1) %>% arrange(desc(freq))
 
 train_2016_v2 %>% group_by(parcelid) %>% summarise(freq=n()) %>% filter(freq>1) %>% dim()
 
 train_2016_v2 %>% group_by(parcelid) %>% summarise(freq=n()) %>%  dim()
+
 ```
 
 
@@ -134,7 +136,10 @@ summary(merged_train)
 # Correcting the datatypes
 zip code is a factor variable , convert as factors
 ```{r}
+
 merged_train$regionidzip=as.factor(merged_train$regionidzip)
+
+
 ```
 
 fips ia another factor variable
@@ -173,7 +178,7 @@ merged_train=merged_train %>% replace_na(list(heatingorsystemtypeid='0')) %>% mu
 
 
 Pooltypeid10 - Spa or Hot tub
-Pooltypeid2 -  Pool with Spa/Hot Tub
+Pooltypeid2 -  Pool with Spa/Hot tub
 Pooltypeid7 -   Pool without hot tub
 
 
@@ -200,7 +205,88 @@ merged_train=merged_train %>% replace_na(list(propertylandusetypeid='261')) %>% 
 
 Removing below variables based on my gut feeling , but eventually needs to be evaluated.
 ```{r}
-merged_train=merged_train %>% select(-c(propertyzoningdesc,rawcensustractandblock))
+merged_train=merged_train %>% select(-c(propertyzoningdesc,rawcensustractandblock,censustractandblock,regionidcity,yardbuildingsqft17,yardbuildingsqft26))
+```
+
+
+regionidneighborhood
+```{r}
+merged_train=merged_train %>% replace_na(list(regionidneighborhood='0')) %>% mutate(regionidneighborhood=as.factor(regionidneighborhood))
+```
+
+
+storytypeid - contains only one value, hence numeric flag column
+```{r}
+merged_train=merged_train %>% replace_na(list(storytypeid='NA')) %>% mutate(storytypeid=as.integer(recode(as.character(storytypeid),"0"="1","NA"="0")))
+```
+
+yearbuilt - impute with median value
+```{r}
+merged_train=merged_train %>% replace_na(list(yearbuilt=1970))
+```
+
+
+typeconstructiontypeid - Convert to factor
+```{r}
+merged_train=merged_train %>% replace_na(list(typeconstructiontypeid='0')) %>% mutate(typeconstructiontypeid=as.factor(typeconstructiontypeid))
+```
+
+taxvaluedollarcnt - impute with median value
+```{r}
+merged_train=merged_train %>% replace_na(list(structuretaxvaluedollarcnt=134100))
+```
+
+
+landtaxvaluedollarcnt - impute with median value
+```{r}
+merged_train=merged_train %>% replace_na(list(landtaxvaluedollarcnt=197800))
+```
+
+taxamount - impute with median value
+```{r}
+merged_train=merged_train %>% replace_na(list(taxamount=4501.0))
+```
+
+
+assessmentyear - impute with median value
+```{r}
+merged_train=merged_train %>% replace_na(list(assessmentyear=2015))
+```
+
+
+taxdelinquencyflag - Convert into binary numeric flag
+```{r}
+merged_train=merged_train %>% replace_na(list(taxdelinquencyflag='N')) %>% 
+  mutate(taxdelinquencyflag=recode(taxdelinquencyflag,'Y'=1,'N'=0))
+```
+
+taxdelinquencyyear - Convert to factor
+```{r}
+merged_train=merged_train %>% replace_na(list(taxdelinquencyyear=0)) %>% 
+  mutate(taxdelinquencyyear=as.factor(taxdelinquencyyear))
+```
+
+Poolcnt - looks like NA might be zero (i.e they don't have pool )
+```{r}
+merged_train=merged_train %>% replace_na(list(poolcnt=0))
+```
+
+numberofstories - Replace NA with zero as other might not have any stories.
+```{r}
+table(merged_train$numberofstories,exclude = NULL)
+merged_train %>% ggplot(aes(x=as.factor(numberofstories),y=logerror))+geom_bar(stat="summary",fun.y="median")
+
+merged_train=merged_train %>% replace_na(list(numberofstories=0))
+```
+
+
+airconditioningtypeid 
+
+```{r}
+table(merged_train$airconditioningtypeid,exclude = NULL)
+merged_train %>% ggplot(aes(x=as.factor(airconditioningtypeid),y=logerror))+geom_bar(stat="summary",fun.y="median")
+
+merged_train=merged_train %>% mutate(airconditioningtypeid=as.numeric(airconditioningtypeid)) %>% replace_na(list(airconditioningtypeid='0')) %>% mutate(airconditioningtypeid=as.factor(airconditioningtypeid))
 ```
 
 
@@ -224,21 +310,30 @@ calculatedfinishedsquarefeet , finishedfloor1squarefeet , finishedsquarefeet12 ,
 Lets keep only the feature with minimun missing values. As per the below results only keep calculatedfinishedsquarefeet
 
 ```{r}
+
 sort(colSums(is.na(merged_train[,c("calculatedfinishedsquarefeet" , "finishedfloor1squarefeet" , "finishedsquarefeet12" , "finishedsquarefeet13" , "finishedsquarefeet15" , "finishedsquarefeet50", "finishedsquarefeet6")])),decreasing = T)
 
 merged_train=merged_train %>% select(-c(finishedsquarefeet13,finishedsquarefeet6,finishedsquarefeet15,finishedfloor1squarefeet,finishedsquarefeet50,finishedsquarefeet12))
-
-
 
 ```
 
 
 
-bathroomcnt is highly correlated with calculatedbathnbr,fullbathcnt and as per the below results calculatedbathnbr & fullbathcnt has more missing value, hence removing it
+bathroomcnt is highly correlated with calculatedbathnbr,fullbathcnt and as per the below results calculatedbathnbr & fullbathcnt has more missing value, hence removing it.
 
 ```{r}
 sort(colSums(is.na(merged_train[,c("calculatedbathnbr","bathroomcnt","fullbathcnt")])),decreasing = T)
 merged_train=merged_train %>% select(-c(calculatedbathnbr,fullbathcnt))
+```
+
+
+landtaxvaluedollorcnt & taxamount is highly correlated . Going to keep taxamount
+```{r}
+cor(data.frame(landtaxvaluedollarcnt=merged_train$landtaxvaluedollarcnt,
+                  taxamount=merged_train$taxamount,
+                  logerror=merged_train$logerror))
+merged_train=merged_train %>% select(-landtaxvaluedollarcnt)
+
 ```
 
 
@@ -249,4 +344,29 @@ sort(colSums(is.na(merged_train)),decreasing = T)
 ```
 
 
+Buildingclasstypeid , since it has 30 observations with '4' & 1 observation with '3' value.
+Since not lot of variation in this feature , i am going to remove
+
+```{r}
+
+table(merged_train$buildingclasstypeid,exclude = NULL)
+merged_train=merged_train %>% select(-buildingclasstypeid)
+
+```
+
+basementsqft , most of the values are missing , hence removiign from the dataset
+
+```{r}
+
+table(merged_train$basementsqft,exclude = NULL)
+merged_train=merged_train %>% select(-basementsqft)
+
+```
+
+Also below features has lot of missing values , hence removing it 
+fireplaceflag,architecturalstyletypeid,poolsizesum,fireplacecnt,threequarterbathnbr
+
+```{r}
+merged_train=merged_train %>% select(-c(fireplaceflag,architecturalstyletypeid,poolsizesum,fireplacecnt,threequarterbathnbr))
+```
 
