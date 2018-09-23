@@ -17,6 +17,10 @@ Loading library
 ```{r message=FALSE, warning=FALSE}
 library(tidyverse)
 library(corrplot)
+library(caret)
+library(randomForest)
+library(RANN)
+
 ```
 
 Listing all the input files
@@ -127,6 +131,11 @@ merged_train_2016=left_join(train_2016_v2,properties_2016,by="parcelid")
 merged_train_2017=left_join(train_2017,properties_2017,by="parcelid")
 
 merged_train=rbind(merged_train_2016,merged_train_2017)
+
+# Changing the column name (lower case) inline with other datasets
+sample_submission=rename(sample_submission,parcelid=ParcelId)
+merged_test=left_join(sample_submission,properties_2016,by="parcelid")
+merged_test=merged_test %>% select(-c(`201610`,`201611`,`201612`,`201710`,`201711`,`201712`))
 ```
 
 Summary of train data
@@ -150,6 +159,13 @@ merged_train = merged_train %>% replace_na(list(regionidzip=97319))
 
 merged_train$regionidzip=as.factor(merged_train$regionidzip)
 
+# ----------------
+#Applying the same transformation to test dataset
+# zip code 97319 is the most common value
+  
+merged_test = merged_test %>% replace_na(list(regionidzip=97319))
+
+merged_test$regionidzip=as.factor(merged_test$regionidzip)
 
 ```
 
@@ -161,6 +177,13 @@ table(merged_train$fips,exclude = NULL)
 merged_train = merged_train %>% replace_na(list(fips=97319))
 
 merged_train$fips=as.factor(merged_train$fips)
+
+# Applying same to test
+
+# fips 06037 is the most common value
+merged_test = merged_test %>% replace_na(list(fips=97319))
+
+merged_test$fips=as.factor(merged_test$fips)
 ```
 
 
@@ -171,6 +194,12 @@ table(merged_train$airconditioningtypeid,exclude = NULL)
 merged_train %>% ggplot(aes(x=as.factor(airconditioningtypeid),y=logerror))+geom_bar(stat="summary",fun.y="median")
 
 merged_train=merged_train %>%
+  replace_na(list(airconditioningtypeid=0)) %>%
+  mutate(airconditioningtypeid=as.factor(airconditioningtypeid))
+
+# Apply same to test dataset
+
+merged_test=merged_test %>%
   replace_na(list(airconditioningtypeid=0)) %>%
   mutate(airconditioningtypeid=as.factor(airconditioningtypeid))
 ```
@@ -185,6 +214,13 @@ merged_train=merged_train %>%
   replace_na(list(decktypeid=0)) %>% 
   mutate(decktypeid=as.character(decktypeid)) %>% 
   mutate(decktypeid=as.integer(recode(decktypeid,'66'='1','0'='0')))
+
+# Applying same to test datset
+
+merged_test=merged_test %>% 
+  replace_na(list(decktypeid=0)) %>% 
+  mutate(decktypeid=as.character(decktypeid)) %>% 
+  mutate(decktypeid=as.integer(recode(decktypeid,'66'='1','0'='0')))
 ```
 
 Has hot tub or spa , convert to binary numeric value
@@ -192,6 +228,10 @@ Has hot tub or spa , convert to binary numeric value
 table(merged_train$hashottuborspa,exclude = NULL)
 
 merged_train=merged_train %>% replace_na(list(hashottuborspa='N')) %>% mutate(hashottuborspa=as.integer(recode(hashottuborspa,'true'=1,'N'=0)))
+
+# Applying same to test dataset
+
+merged_test=merged_test %>% replace_na(list(hashottuborspa='N')) %>% mutate(hashottuborspa=as.integer(recode(hashottuborspa,'true'=1,'N'=0)))
 ```
 
 Heating system type,convert to factors
@@ -199,6 +239,10 @@ Heating system type,convert to factors
 table(merged_train$heatingorsystemtypeid,exclude = NULL)
 
 merged_train=merged_train %>% replace_na(list(heatingorsystemtypeid='0')) %>% mutate(heatingorsystemtypeid=as.factor(heatingorsystemtypeid))
+
+# Applying same to test
+
+merged_test=merged_test %>% replace_na(list(heatingorsystemtypeid='0')) %>% mutate(heatingorsystemtypeid=as.factor(heatingorsystemtypeid))
 
 ```
 
@@ -214,18 +258,35 @@ merged_train=merged_train %>% replace_na(list(pooltypeid10=0)) %>% mutate(poolty
 merged_train=merged_train %>% replace_na(list(pooltypeid2=0)) %>% mutate(pooltypeid2=as.integer(pooltypeid2))
 
 merged_train=merged_train %>% replace_na(list(pooltypeid7=0)) %>% mutate(pooltypeid7=as.integer(pooltypeid7))
+
+
+# Applying same to test
+
+merged_test=merged_test %>% replace_na(list(pooltypeid10=0)) %>% mutate(pooltypeid10=as.integer(pooltypeid10))
+
+merged_test=merged_test %>% replace_na(list(pooltypeid2=0)) %>% mutate(pooltypeid2=as.integer(pooltypeid2))
+
+merged_test=merged_test %>% replace_na(list(pooltypeid7=0)) %>% mutate(pooltypeid7=as.integer(pooltypeid7))
 ```
 
 propertycountylandusecode, replace it with most common value (0100) and convert into factor 
 
 ```{r}
 merged_train=merged_train %>% replace_na(list(propertycountylandusecode=0100)) %>% mutate(propertycountylandusecode=as.factor(propertycountylandusecode))
+
+#Applying to test
+
+merged_test=merged_test %>% replace_na(list(propertycountylandusecode=0100)) %>% mutate(propertycountylandusecode=as.factor(propertycountylandusecode))
 ```
 
 propertylandusetypeid, replace it with most common value (261) and convert into factor 
 
 ```{r}
 merged_train=merged_train %>% replace_na(list(propertylandusetypeid='261')) %>% mutate(propertylandusetypeid=as.factor(propertylandusetypeid))
+
+# Applying to test
+
+merged_test=merged_test %>% replace_na(list(propertylandusetypeid='261')) %>% mutate(propertylandusetypeid=as.factor(propertylandusetypeid))
 ```
 
 
@@ -234,34 +295,54 @@ storytypeid - contains only one value, hence numeric flag column
 table(merged_train$storytypeid,exclude = NULL)
 
 merged_train=merged_train %>% replace_na(list(storytypeid='NA')) %>% mutate(storytypeid=as.integer(recode(as.character(storytypeid),"0"="1","NA"="0")))
+
+# Applying to test
+
+merged_test=merged_test %>% replace_na(list(storytypeid='NA')) %>% mutate(storytypeid=as.integer(recode(as.character(storytypeid),"0"="1","NA"="0")))
 ```
 
 yearbuilt - impute with median value
 ```{r}
 merged_train=merged_train %>% replace_na(list(yearbuilt=1970))
+
+# Apply to test
+merged_test=merged_test %>% replace_na(list(yearbuilt=1970))
 ```
 
 
 taxvaluedollarcnt - impute with median value
 ```{r}
 merged_train=merged_train %>% replace_na(list(structuretaxvaluedollarcnt=134100))
+
+#Apply to test
+merged_test=merged_test %>% replace_na(list(structuretaxvaluedollarcnt=134100))
 ```
 
 
 landtaxvaluedollarcnt - impute with median value
 ```{r}
 merged_train=merged_train %>% replace_na(list(landtaxvaluedollarcnt=197800))
+
+#Apply to test
+
+merged_test=merged_test %>% replace_na(list(landtaxvaluedollarcnt=197800))
 ```
 
 taxamount - impute with median value
 ```{r}
 merged_train=merged_train %>% replace_na(list(taxamount=4501.0))
+
+# Apply to test
+merged_test=merged_test %>% replace_na(list(taxamount=4501.0))
 ```
 
 
 assessmentyear - impute with median value
 ```{r}
 merged_train=merged_train %>% replace_na(list(assessmentyear=2015))
+
+#Apply to test
+merged_test=merged_test %>% replace_na(list(assessmentyear=2015))
 ```
 
 
@@ -269,17 +350,33 @@ taxdelinquencyflag - Convert into binary numeric flag
 ```{r}
 merged_train=merged_train %>% replace_na(list(taxdelinquencyflag='N')) %>% 
   mutate(taxdelinquencyflag=recode(taxdelinquencyflag,'Y'=1,'N'=0))
+
+# Apply to test
+
+merged_test=merged_test %>% replace_na(list(taxdelinquencyflag='N')) %>% 
+  mutate(taxdelinquencyflag=recode(taxdelinquencyflag,'Y'=1,'N'=0))
+
 ```
 
 taxdelinquencyyear - Convert to factor
 ```{r}
 merged_train=merged_train %>% replace_na(list(taxdelinquencyyear=0)) %>% 
   mutate(taxdelinquencyyear=as.factor(taxdelinquencyyear))
+
+#Apply to test
+
+merged_test=merged_test %>% replace_na(list(taxdelinquencyyear=0)) %>% 
+  mutate(taxdelinquencyyear=as.factor(taxdelinquencyyear))
+
 ```
 
 Poolcnt - looks like NA might be zero (i.e they don't have pool )
 ```{r}
 merged_train=merged_train %>% replace_na(list(poolcnt=0))
+
+# Apply to test
+
+merged_test=merged_test %>% replace_na(list(poolcnt=0))
 ```
 
 numberofstories - Replace NA with zero as other might not have any stories.
@@ -288,6 +385,10 @@ table(merged_train$numberofstories,exclude = NULL)
 merged_train %>% ggplot(aes(x=as.factor(numberofstories),y=logerror))+geom_bar(stat="summary",fun.y="median")
 
 merged_train=merged_train %>% replace_na(list(numberofstories=0))
+
+#Apply to test
+
+merged_test=merged_test %>% replace_na(list(numberofstories=0))
 ```
 
 
@@ -296,6 +397,10 @@ calculatedfinishedsquarefeet - impute with median value
 summary(merged_train$calculatedfinishedsquarefeet)
 # median value is 1541
 merged_train=merged_train %>% replace_na(list(calculatedfinishedsquarefeet=1541))
+
+# Apply to test
+
+merged_test=merged_test %>% replace_na(list(calculatedfinishedsquarefeet=1541))
 ```
 
 
@@ -304,6 +409,11 @@ taxvaluedollarcnt - impute with median value
 summary(merged_train$taxvaluedollarcnt)
 # median value is 350000
 merged_train=merged_train %>% replace_na(list(taxvaluedollarcnt=350000))
+
+
+#Apply to test
+merged_test=merged_test %>% replace_na(list(taxvaluedollarcnt=350000))
+
 ```
 
 
@@ -312,6 +422,9 @@ bathroomcnt - impute with median value
 summary(merged_train$bathroomcnt)
 # median value is 2
 merged_train=merged_train %>% replace_na(list(bathroomcnt=2))
+
+#Apply to test
+merged_test=merged_test %>% replace_na(list(bathroomcnt=2))
 ```
 
 
@@ -321,6 +434,9 @@ bedroomcnt - impute with median value
 summary(merged_train$bedroomcnt)
 # median value is 3
 merged_train=merged_train %>% replace_na(list(bedroomcnt=3))
+
+#Apply to test
+merged_test=merged_test %>% replace_na(list(bedroomcnt=3))
 ```
 
 
@@ -329,6 +445,10 @@ latitude - impute with median value
 summary(merged_train$latitude)
 # median value is 34021700
 merged_train=merged_train %>% replace_na(list(latitude=34021700))
+
+
+#Apply to test
+merged_test=merged_test %>% replace_na(list(latitude=34021700))
 ```
 
 
@@ -337,6 +457,9 @@ longitude - impute with median value
 summary(merged_train$longitude)
 # median value is -118176852
 merged_train=merged_train %>% replace_na(list(longitude=-118176852))
+
+#Apply to test
+merged_test=merged_test %>% replace_na(list(longitude=-118176852))
 ```
 
 
@@ -345,6 +468,9 @@ longitude - impute with median value
 summary(merged_train$roomcnt)
 # median value is 0
 merged_train=merged_train %>% replace_na(list(roomcnt=0))
+
+#Apply to test
+merged_test=merged_test %>% replace_na(list(roomcnt=0))
 ```
 
 
@@ -354,6 +480,12 @@ regionidcounty - Impute with common value and convert as factor
 table(merged_train$regionidcounty,exclude = NULL)
 
 merged_train=merged_train %>% 
+  replace_na(list(regionidcounty=3101)) %>% 
+  mutate(regionidcounty=as.factor(regionidcounty))
+
+
+# Apply to test
+merged_test=merged_test %>% 
   replace_na(list(regionidcounty=3101)) %>% 
   mutate(regionidcounty=as.factor(regionidcounty))
 ```
@@ -367,6 +499,10 @@ Since not lot of variation in this feature , i am going to remove
 table(merged_train$buildingclasstypeid,exclude = NULL)
 merged_train=merged_train %>% select(-buildingclasstypeid)
 
+#Applying to test
+
+merged_test=merged_test %>% select(-buildingclasstypeid)
+
 ```
 
 basementsqft , most of the values are missing , hence removiign from the dataset
@@ -376,6 +512,9 @@ basementsqft , most of the values are missing , hence removiign from the dataset
 table(merged_train$basementsqft,exclude = NULL)
 merged_train=merged_train %>% select(-basementsqft)
 
+# Applying to test
+
+merged_test=merged_test %>% select(-basementsqft)
 ```
 
 Also below features has lot of missing values , hence removing it 
@@ -383,12 +522,20 @@ fireplaceflag,architecturalstyletypeid,poolsizesum,fireplacecnt,threequarterbath
 
 ```{r}
 merged_train=merged_train %>% select(-c(fireplaceflag,architecturalstyletypeid,poolsizesum,fireplacecnt,threequarterbathnbr,garagecarcnt,garagetotalsqft,buildingqualitytypeid,unitcnt,lotsizesquarefeet))
+
+# Apply to test
+
+merged_test=merged_test %>% select(-c(fireplaceflag,architecturalstyletypeid,poolsizesum,fireplacecnt,threequarterbathnbr,garagecarcnt,garagetotalsqft,buildingqualitytypeid,unitcnt,lotsizesquarefeet))
 ```
 
 
 Removing below variables based on my gut feeling , but eventually needs to be evaluated.
 ```{r}
 merged_train=merged_train %>% select(-c(propertyzoningdesc,rawcensustractandblock,censustractandblock,regionidcity,yardbuildingsqft17,yardbuildingsqft26,regionidneighborhood,typeconstructiontypeid))
+
+#Apply to test
+
+merged_test=merged_test %>% select(-c(propertyzoningdesc,rawcensustractandblock,censustractandblock,regionidcity,yardbuildingsqft17,yardbuildingsqft26,regionidneighborhood,typeconstructiontypeid))
 ```
 
 
@@ -420,6 +567,9 @@ sort(colSums(is.na(merged_train[,c("calculatedfinishedsquarefeet" , "finishedflo
 
 merged_train=merged_train %>% select(-c(finishedsquarefeet13,finishedsquarefeet6,finishedsquarefeet15,finishedfloor1squarefeet,finishedsquarefeet50,finishedsquarefeet12))
 
+# Apply to test
+merged_test=merged_test %>%
+select(-c(finishedsquarefeet13,finishedsquarefeet6,finishedsquarefeet15,finishedfloor1squarefeet,finishedsquarefeet50,finishedsquarefeet12))
 ```
 
 
@@ -429,6 +579,9 @@ bathroomcnt is highly correlated with calculatedbathnbr,fullbathcnt and as per t
 ```{r}
 sort(colSums(is.na(merged_train[,c("calculatedbathnbr","bathroomcnt","fullbathcnt")])),decreasing = T)
 merged_train=merged_train %>% select(-c(calculatedbathnbr,fullbathcnt))
+
+#Apply to test
+merged_test=merged_test %>% select(-c(calculatedbathnbr,fullbathcnt))
 ```
 
 
@@ -439,6 +592,8 @@ cor(data.frame(landtaxvaluedollarcnt=merged_train$landtaxvaluedollarcnt,
                   logerror=merged_train$logerror))
 merged_train=merged_train %>% select(-landtaxvaluedollarcnt)
 
+#Apply to test
+merged_test=merged_test %>% select(-landtaxvaluedollarcnt)
 ```
 
 
@@ -447,5 +602,63 @@ merged_train=merged_train %>% select(-landtaxvaluedollarcnt)
 ```{r}
 sort(colSums(is.na(merged_train)),decreasing = T)
 ```
+
+Since we cleaned up all the data , lets jump to modeling
+
+# Modeling
+
+Before training modeling lets remove parcellid &transactiondate
+
+<span style="color:red"> also removing airconditioningtypeid,heatingorsystemtypeid,propertycountylandusecode,propertylandusetypeid,regionidziptaxdelinquencyyear because test data has more value than train </span>
+
+```{r}
+merged_train_1=merged_train %>% select(-c(parcelid,transactiondate,airconditioningtypeid,airconditioningtypeid,heatingorsystemtypeid,propertycountylandusecode,propertylandusetypeid,regionidzip,taxdelinquencyyear,regionidcounty,pooltypeid7,pooltypeid2))
+```
+
+Adding cross validation parameter
+```{r}
+train_control=trainControl(method="cv",number=3)
+
+index=createDataPartition(merged_train_1$logerror,p=.7,list=FALSE)
+dtrain=merged_train_1[index,]
+dvalidation=merged_train_1[-index,]
+```
+
+
+
+first linear regression - validation mse of 0.024
+
+```{r}
+rf_model=randomForest(logerror~.,data=dtrain,ntree=4)
+predict_rf=predict(rf_model,newdata = dvalidation)
+mse(predict_rf,dvalidation$logerror)
+```
+
+test prediction
+```{r}
+preprocess_values=preProcess(merged_test,method = c("medianImpute"))
+merged_test=predict(preprocess_values,merged_test)
+
+predict_test_rf=predict(rf_model,newdata=merged_test)
+length(predict_test_rf)
+
+prediction=data.frame(parcelid=merged_test$parcelid,logerror=predict_test_rf)
+
+#fill the same value for all the months
+prediction = prediction %>% mutate(
+  `201610`=logerror,
+  `201611`=logerror,
+  `201612`=logerror,
+  `201710`=logerror,
+  `201711`=logerror,
+  `201712`=logerror  
+) %>% 
+  select(-c(logerror))
+
+write_csv(prediction,"prediction.csv")
+```
+
+
+
 
 
